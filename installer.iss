@@ -23,12 +23,21 @@ Name: "startmenuicon"; Description: "Create Start Menu shortcut"; GroupDescripti
 
 [Files]
 Source: "dist\SupermarketERP.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+; Database files
 Source: "database\*.py"; DestDir: "{app}\database"; Flags: ignoreversion
 Source: "database\*.sql"; DestDir: "{app}\database"; Flags: ignoreversion
+
+; Module files - simplified
 Source: "modules\*.py"; DestDir: "{app}\modules"; Flags: ignoreversion
-Source: "modules\*\*.py"; DestDir: "{app}\modules"; Flags: ignoreversion recursesubdirs
+
+; UI files
 Source: "ui\styles\*.qss"; DestDir: "{app}\ui\styles"; Flags: ignoreversion
+
+; Utils files
 Source: "utils\*.py"; DestDir: "{app}\utils"; Flags: ignoreversion
+
+; Root files
 Source: "config.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "main.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
