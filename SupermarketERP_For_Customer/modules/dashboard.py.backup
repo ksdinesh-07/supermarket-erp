@@ -1,0 +1,446 @@
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+                           QLabel, QPushButton, QStackedWidget, QFrame,
+                           QMessageBox, QStatusBar, QToolBar, QAction,
+                           QTabWidget, QTableWidget, QTableWidgetItem,
+                           QHeaderView, QGroupBox, QGridLayout)
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QFont, QIcon, QPalette, QColor
+from datetime import datetime
+from database.models import ProductModel, SaleModel, CustomerModel
+from utils.helpers import format_currency, get_current_date
+from config import THEME
+
+class MainDashboard(QMainWindow):
+    def __init__(self, user):
+        super().__init__()
+        self.user = user
+        self.product_model = ProductModel()
+        self.sale_model = SaleModel()
+        self.customer_model = CustomerModel()
+        self.summary_cards = {}  # Store card references
+        self.init_ui()
+        self.load_dashboard_data()
+        
+        # Auto-refresh timer
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.load_dashboard_data)
+        self.timer.start(30000)  # Refresh every 30 seconds
+        
+    def init_ui(self):
+        self.setWindowTitle(f"Supermarket ERP - Welcome {self.user['full_name']} ({self.user['role']})")
+        self.setGeometry(100, 100, 1400, 800)
+        
+        # Apply stylesheet
+        try:
+            with open('ui/styles/modern_blue.qss', 'r') as f:
+                self.setStyleSheet(f.read())
+        except FileNotFoundError:
+            print("Stylesheet not found, using default styles")
+        
+        # Create menu bar
+        self.create_menu_bar()
+        
+        # Create toolbar
+        self.create_toolbar()
+        
+        # Central widget
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        # Main layout
+        main_layout = QVBoxLayout(central_widget)
+        
+        # Header
+        header = self.create_header()
+        main_layout.addWidget(header)
+        
+        # Content area with tabs
+        self.tab_widget = QTabWidget()
+        
+        # Dashboard tab
+        self.dashboard_tab = self.create_dashboard_tab()
+        self.tab_widget.addTab(self.dashboard_tab, "📊 Dashboard")
+        
+        # POS tab
+        self.pos_tab = self.create_pos_tab()
+        self.tab_widget.addTab(self.pos_tab, "🛒 Point of Sale")
+        
+        # Products tab
+        self.products_tab = self.create_products_tab()
+        self.tab_widget.addTab(self.products_tab, "📦 Products")
+        
+        # Customers tab
+        self.customers_tab = self.create_customers_tab()
+        self.tab_widget.addTab(self.customers_tab, "👥 Customers")
+        
+        # Reports tab
+        self.reports_tab = self.create_reports_tab()
+        self.tab_widget.addTab(self.reports_tab, "📈 Reports")
+        
+        # Admin tab (only for admin)
+        if self.user['role'] == 'admin':
+            self.admin_tab = self.create_admin_tab()
+            self.tab_widget.addTab(self.admin_tab, "⚙️ Admin")
+        
+        main_layout.addWidget(self.tab_widget)
+        
+        # Status bar
+        self.create_status_bar()
+        
+    def create_menu_bar(self):
+        menubar = self.menuBar()
+        
+        # File menu
+        file_menu = menubar.addMenu('File')
+        
+        logout_action = QAction('Logout', self)
+        logout_action.triggered.connect(self.logout)
+        file_menu.addAction(logout_action)
+        
+        exit_action = QAction('Exit', self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # Masters menu
+        masters_menu = menubar.addMenu('Masters')
+        
+        products_action = QAction('Products', self)
+        products_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
+        masters_menu.addAction(products_action)
+        
+        customers_action = QAction('Customers', self)
+        customers_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
+        masters_menu.addAction(customers_action)
+        
+        # Transactions menu
+        trans_menu = menubar.addMenu('Transactions')
+        
+        pos_action = QAction('Point of Sale', self)
+        pos_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(1))
+        trans_menu.addAction(pos_action)
+        
+        # Reports menu
+        reports_menu = menubar.addMenu('Reports')
+        
+        sales_report_action = QAction('Sales Report', self)
+        sales_report_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(4))
+        reports_menu.addAction(sales_report_action)
+        
+        # Help menu
+        help_menu = menubar.addMenu('Help')
+        
+        about_action = QAction('About', self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+        
+    def create_toolbar(self):
+        toolbar = QToolBar("Main Toolbar")
+        self.addToolBar(toolbar)
+        
+        # Add toolbar actions
+        pos_action = QAction("🛒 POS", self)
+        pos_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(1))
+        toolbar.addAction(pos_action)
+        
+        products_action = QAction("📦 Products", self)
+        products_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
+        toolbar.addAction(products_action)
+        
+        customers_action = QAction("👥 Customers", self)
+        customers_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
+        toolbar.addAction(customers_action)
+        
+        toolbar.addSeparator()
+        
+        refresh_action = QAction("🔄 Refresh", self)
+        refresh_action.triggered.connect(self.load_dashboard_data)
+        toolbar.addAction(refresh_action)
+        
+    def create_header(self):
+        header = QFrame()
+        header.setFrameShape(QFrame.StyledPanel)
+        header.setMaximumHeight(80)
+        
+        layout = QHBoxLayout(header)
+        
+        # Welcome message
+        welcome_label = QLabel(f"Welcome back, {self.user['full_name']}!")
+        welcome_label.setFont(QFont("Arial", 16, QFont.Bold))
+        layout.addWidget(welcome_label)
+        
+        layout.addStretch()
+        
+        # Date and time
+        self.datetime_label = QLabel()
+        self.datetime_label.setFont(QFont("Arial", 12))
+        layout.addWidget(self.datetime_label)
+        
+        # Update time every second
+        self.time_timer = QTimer()
+        self.time_timer.timeout.connect(self.update_datetime)
+        self.time_timer.start(1000)
+        self.update_datetime()
+        
+        return header
+    
+    def update_datetime(self):
+        now = datetime.now().strftime("%d %B %Y, %I:%M:%S %p")
+        self.datetime_label.setText(now)
+    
+    def create_status_bar(self):
+        status_bar = QStatusBar()
+        self.setStatusBar(status_bar)
+        
+        # Add status labels
+        self.user_status = QLabel(f"User: {self.user['username']} ({self.user['role']})")
+        status_bar.addWidget(self.user_status)
+        
+        status_bar.addPermanentWidget(QLabel(f"Date: {get_current_date()}"))
+    
+    def create_dashboard_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        # Summary cards
+        cards_layout = QHBoxLayout()
+        
+        # Today's Sales Card
+        sales_card, sales_value = self.create_summary_card("Today's Sales", "₹ 0", "💰")
+        cards_layout.addWidget(sales_card)
+        self.summary_cards['sales'] = sales_value
+        
+        # Products Card
+        products_card, products_value = self.create_summary_card("Total Products", "0", "📦")
+        cards_layout.addWidget(products_card)
+        self.summary_cards['products'] = products_value
+        
+        # Low Stock Card
+        low_stock_card, low_stock_value = self.create_summary_card("Low Stock Alert", "0", "⚠️")
+        cards_layout.addWidget(low_stock_card)
+        self.summary_cards['low_stock'] = low_stock_value
+        
+        # Customers Card
+        customers_card, customers_value = self.create_summary_card("Total Customers", "0", "👥")
+        cards_layout.addWidget(customers_card)
+        self.summary_cards['customers'] = customers_value
+        
+        layout.addLayout(cards_layout)
+        
+        # Charts and tables
+        bottom_layout = QHBoxLayout()
+        
+        # Recent Sales
+        recent_sales_group = QGroupBox("Recent Sales")
+        recent_sales_layout = QVBoxLayout()
+        self.recent_sales_table = QTableWidget()
+        self.recent_sales_table.setColumnCount(4)
+        self.recent_sales_table.setHorizontalHeaderLabels(["Invoice", "Customer", "Amount", "Time"])
+        self.recent_sales_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        recent_sales_layout.addWidget(self.recent_sales_table)
+        recent_sales_group.setLayout(recent_sales_layout)
+        bottom_layout.addWidget(recent_sales_group, 2)
+        
+        # Low Stock Products
+        low_stock_group = QGroupBox("Low Stock Products")
+        low_stock_layout = QVBoxLayout()
+        self.low_stock_table = QTableWidget()
+        self.low_stock_table.setColumnCount(3)
+        self.low_stock_table.setHorizontalHeaderLabels(["Product", "Current Stock", "Reorder Level"])
+        self.low_stock_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        low_stock_layout.addWidget(self.low_stock_table)
+        low_stock_group.setLayout(low_stock_layout)
+        bottom_layout.addWidget(low_stock_group, 1)
+        
+        layout.addLayout(bottom_layout)
+        
+        return tab
+    
+    def create_summary_card(self, title, value, icon):
+        card = QFrame()
+        card.setFrameShape(QFrame.StyledPanel)
+        card.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border-radius: 10px;
+                padding: 15px;
+                margin: 5px;
+            }
+            QFrame:hover {
+                background-color: #f5f5f5;
+            }
+        """)
+        
+        layout = QVBoxLayout(card)
+        
+        # Icon and title
+        title_layout = QHBoxLayout()
+        icon_label = QLabel(icon)
+        icon_label.setFont(QFont("Arial", 24))
+        title_layout.addWidget(icon_label)
+        
+        title_label = QLabel(title)
+        title_label.setFont(QFont("Arial", 12))
+        title_label.setStyleSheet("color: gray;")
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+        
+        layout.addLayout(title_layout)
+        
+        # Value
+        value_label = QLabel(value)
+        value_label.setObjectName("value_label")
+        value_label.setFont(QFont("Arial", 24, QFont.Bold))
+        value_label.setStyleSheet(f"color: {THEME['primary']};")
+        layout.addWidget(value_label)
+        
+        return card, value_label
+    
+    def load_dashboard_data(self):
+        try:
+            # Load summary data
+            sales_summary = self.sale_model.get_sales_summary(get_current_date(), get_current_date())
+            if sales_summary and sales_summary['total_revenue']:
+                self.summary_cards['sales'].setText(format_currency(sales_summary['total_revenue']))
+            else:
+                self.summary_cards['sales'].setText(format_currency(0))
+            
+            # Load products count
+            products = self.product_model.get_all_products()
+            self.summary_cards['products'].setText(str(len(products)))
+            
+            # Load low stock products
+            low_stock = self.product_model.get_low_stock_products()
+            self.summary_cards['low_stock'].setText(str(len(low_stock)))
+            
+            # Load customers count
+            customers = self.customer_model.get_all_customers()
+            self.summary_cards['customers'].setText(str(len(customers)))
+            
+            # Load recent sales
+            recent_sales = self.sale_model.get_daily_sales()
+            self.recent_sales_table.setRowCount(len(recent_sales))
+            for i, sale in enumerate(recent_sales):
+                self.recent_sales_table.setItem(i, 0, QTableWidgetItem(sale['invoice_number']))
+                self.recent_sales_table.setItem(i, 1, QTableWidgetItem(sale.get('customer_name', 'Walk-in') or "Walk-in"))
+                self.recent_sales_table.setItem(i, 2, QTableWidgetItem(format_currency(sale['total_amount'])))
+                # Handle datetime object
+                if isinstance(sale['created_at'], datetime):
+                    time_str = sale['created_at'].strftime('%H:%M:%S')
+                else:
+                    time_str = str(sale['created_at'])
+                self.recent_sales_table.setItem(i, 3, QTableWidgetItem(time_str))
+            
+            # Load low stock products table
+            self.low_stock_table.setRowCount(len(low_stock))
+            for i, product in enumerate(low_stock):
+                self.low_stock_table.setItem(i, 0, QTableWidgetItem(product['name']))
+                self.low_stock_table.setItem(i, 1, QTableWidgetItem(str(product['quantity'])))
+                self.low_stock_table.setItem(i, 2, QTableWidgetItem(str(product['reorder_level'])))
+                
+        except Exception as e:
+            print(f"Error loading dashboard data: {e}")
+    
+    def create_pos_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        # Center message
+        message = QLabel("🛒 Point of Sale Module")
+        message.setAlignment(Qt.AlignCenter)
+        message.setFont(QFont("Arial", 24, QFont.Bold))
+        layout.addWidget(message)
+        
+        coming_soon = QLabel("Coming Soon!")
+        coming_soon.setAlignment(Qt.AlignCenter)
+        coming_soon.setFont(QFont("Arial", 16))
+        coming_soon.setStyleSheet("color: gray;")
+        layout.addWidget(coming_soon)
+        
+        return tab
+    
+    def create_products_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        message = QLabel("📦 Products Management Module")
+        message.setAlignment(Qt.AlignCenter)
+        message.setFont(QFont("Arial", 24, QFont.Bold))
+        layout.addWidget(message)
+        
+        coming_soon = QLabel("Coming Soon!")
+        coming_soon.setAlignment(Qt.AlignCenter)
+        coming_soon.setFont(QFont("Arial", 16))
+        coming_soon.setStyleSheet("color: gray;")
+        layout.addWidget(coming_soon)
+        
+        return tab
+    
+    def create_customers_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        message = QLabel("👥 Customers Management Module")
+        message.setAlignment(Qt.AlignCenter)
+        message.setFont(QFont("Arial", 24, QFont.Bold))
+        layout.addWidget(message)
+        
+        coming_soon = QLabel("Coming Soon!")
+        coming_soon.setAlignment(Qt.AlignCenter)
+        coming_soon.setFont(QFont("Arial", 16))
+        coming_soon.setStyleSheet("color: gray;")
+        layout.addWidget(coming_soon)
+        
+        return tab
+    
+    def create_reports_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        message = QLabel("📈 Reports Module")
+        message.setAlignment(Qt.AlignCenter)
+        message.setFont(QFont("Arial", 24, QFont.Bold))
+        layout.addWidget(message)
+        
+        coming_soon = QLabel("Coming Soon!")
+        coming_soon.setAlignment(Qt.AlignCenter)
+        coming_soon.setFont(QFont("Arial", 16))
+        coming_soon.setStyleSheet("color: gray;")
+        layout.addWidget(coming_soon)
+        
+        return tab
+    
+    def create_admin_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        message = QLabel("⚙️ Admin Module")
+        message.setAlignment(Qt.AlignCenter)
+        message.setFont(QFont("Arial", 24, QFont.Bold))
+        layout.addWidget(message)
+        
+        coming_soon = QLabel("Coming Soon!")
+        coming_soon.setAlignment(Qt.AlignCenter)
+        coming_soon.setFont(QFont("Arial", 16))
+        coming_soon.setStyleSheet("color: gray;")
+        layout.addWidget(coming_soon)
+        
+        return tab
+    
+    def logout(self):
+        reply = QMessageBox.question(self, 'Logout', 'Are you sure you want to logout?',
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.close()
+            # Restart the application
+            import sys
+            import subprocess
+            subprocess.Popen([sys.executable, 'main.py'])
+            sys.exit()
+    
+    def show_about(self):
+        QMessageBox.about(self, "About Supermarket ERP",
+                         f"<h2>Supermarket ERP System</h2>"
+                         f"<p>Version: 1.0.0</p>"
+                         f"<p>A complete ERP solution for supermarkets</p>"
+                         f"<p>Developed with PyQt5 and MySQL</p>"
+                         f"<p>© 2024 Your Company</p>")

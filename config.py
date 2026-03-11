@@ -1,10 +1,6 @@
-# Database configuration
+# Database configuration for SQLite
 DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',
-    'password': '11111111',  # Change this to your MySQL password
-    'database': 'supermarket_erp',
-    'port': 3306
+    'database': 'supermarket.db'  # SQLite database file
 }
 
 # Application settings
@@ -16,9 +12,9 @@ COMPANY_NAME = "Your Company Name"
 TAX_RATE = 0.10  # 10% VAT/GST
 
 # Currency symbol
-CURRENCY_SYMBOL = "₹"  # Change to $, €, etc. as needed
+CURRENCY_SYMBOL = "₹"
 
-# Theme colors (for QSS styling)
+# Theme colors
 THEME = {
     'primary': '#2196F3',
     'secondary': '#FFC107',

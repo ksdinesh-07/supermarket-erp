@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                            QDateTimeEdit, QMessageBox, QFrame, QSplitter,
                            QTextEdit, QCheckBox)
 from PyQt5.QtCore import Qt, QTimer, QDateTime, pyqtSignal
-from PyQt5.QtGui import QFont, QColor, QPalette
+from PyQt5.QtGui import QFont, QColor
 from database.connection import DatabaseConnection
 from utils.helpers import format_currency
 from datetime import datetime, timedelta
@@ -251,13 +251,16 @@ class BusinessAlertsModule(QWidget):
     
     def check_low_stock(self):
         """Check for low stock products and create alerts"""
+        from datetime import datetime, timedelta
+        
+        # Fixed: SQLite compatible query
         query = """
             SELECT p.*, 
                    (SELECT COUNT(*) FROM alerts 
                     WHERE product_id = p.id 
                     AND alert_type = 'low_stock' 
-                    AND is_resolved = FALSE 
-                    AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)) as recent_alert
+                    AND is_resolved = 0 
+                    AND datetime(created_at) > datetime('now', '-1 day')) as recent_alert
             FROM products p
             WHERE p.quantity <= p.reorder_level
             AND p.quantity > 0
@@ -274,23 +277,30 @@ class BusinessAlertsModule(QWidget):
     
     def check_expiring_products(self):
         """Check for products nearing expiry"""
+        from datetime import datetime, timedelta
+        
+        # Fixed: SQLite compatible query
         query = """
             SELECT * FROM products 
             WHERE expiry_date IS NOT NULL 
-            AND expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
-            AND expiry_date >= CURDATE()
+            AND expiry_date <= date('now', '+30 days')
+            AND expiry_date >= date('now')
         """
         expiring = self.db.fetch_all(query)
         
         for product in expiring:
-            days_left = (product['expiry_date'] - datetime.now().date()).days
+            # Calculate days left
+            from datetime import datetime
+            expiry_date = datetime.strptime(product['expiry_date'], '%Y-%m-%d').date()
+            today = datetime.now().date()
+            days_left = (expiry_date - today).days
             
-            # Check if alert already exists for this product
+            # Check if alert already exists
             check_query = """
                 SELECT id FROM alerts 
-                WHERE product_id = %s 
+                WHERE product_id = ? 
                 AND alert_type = 'expiry' 
-                AND is_resolved = FALSE
+                AND is_resolved = 0
             """
             existing = self.db.fetch_one(check_query, (product['id'],))
             
@@ -309,13 +319,15 @@ class BusinessAlertsModule(QWidget):
     
     def check_sales_targets(self):
         """Check daily sales targets"""
+        from datetime import datetime
+        
         today = datetime.now().strftime('%Y-%m-%d')
         
         # Get today's sales
         query = """
             SELECT COALESCE(SUM(total_amount), 0) as daily_sales
             FROM sales
-            WHERE DATE(created_at) = %s
+            WHERE DATE(created_at) = ?
         """
         result = self.db.fetch_one(query, (today,))
         daily_sales = result['daily_sales'] if result else 0
@@ -356,20 +368,23 @@ class BusinessAlertsModule(QWidget):
     def create_alert(self, alert_type, severity, title, message, product_id=None):
         """Create a new alert in the database"""
         try:
+            from datetime import datetime, timedelta
+            
             # Check if similar alert already exists
             check_query = """
                 SELECT id FROM alerts 
-                WHERE alert_type = %s 
-                AND title = %s 
-                AND is_resolved = FALSE
-                AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+                WHERE alert_type = ? 
+                AND title = ? 
+                AND is_resolved = 0
+                AND datetime(created_at) > datetime('now', '-1 hour')
             """
             existing = self.db.fetch_one(check_query, (alert_type, title))
             
             if not existing:
+                # Fixed: Changed %s to ?
                 query = """
                     INSERT INTO alerts (alert_type, severity, title, message, product_id)
-                    VALUES (%s, %s, %s, %s, %s)
+                    VALUES (?, ?, ?, ?, ?)
                 """
                 self.db.execute_query(query, (alert_type, severity, title, message, product_id))
                 
@@ -385,6 +400,7 @@ class BusinessAlertsModule(QWidget):
             date_from = self.date_from.dateTime().toString('yyyy-MM-dd HH:mm:ss')
             date_to = self.date_to.dateTime().toString('yyyy-MM-dd HH:mm:ss')
             
+            # Fixed: Changed %s to ?
             query = """
                 SELECT a.*, 
                        CASE 
@@ -393,24 +409,24 @@ class BusinessAlertsModule(QWidget):
                            ELSE 'Unread'
                        END as display_status
                 FROM alerts a
-                WHERE a.created_at BETWEEN %s AND %s
+                WHERE datetime(a.created_at) BETWEEN datetime(?) AND datetime(?)
             """
             params = [date_from, date_to]
             
             if alert_type != 'All':
-                query += " AND a.alert_type = %s"
+                query += " AND a.alert_type = ?"
                 params.append(alert_type)
             
             if severity != 'All':
-                query += " AND a.severity = %s"
+                query += " AND a.severity = ?"
                 params.append(severity)
             
             if status == 'Unread':
-                query += " AND a.is_read = FALSE AND a.is_resolved = FALSE"
+                query += " AND a.is_read = 0 AND a.is_resolved = 0"
             elif status == 'Read':
-                query += " AND a.is_read = TRUE AND a.is_resolved = FALSE"
+                query += " AND a.is_read = 1 AND a.is_resolved = 0"
             elif status == 'Resolved':
-                query += " AND a.is_resolved = TRUE"
+                query += " AND a.is_resolved = 1"
             
             query += " ORDER BY a.created_at DESC"
             
@@ -465,7 +481,18 @@ class BusinessAlertsModule(QWidget):
                 self.alerts_table.setItem(i, 4, QTableWidgetItem(message))
                 
                 # Time
-                time_str = alert['created_at'].strftime('%H:%M %d/%m') if alert['created_at'] else '-'
+                if alert['created_at']:
+                    # Handle string or datetime object
+                    if hasattr(alert['created_at'], 'strftime'):
+                        time_str = alert['created_at'].strftime('%H:%M %d/%m')
+                    else:
+                        try:
+                            dt = datetime.strptime(alert['created_at'], '%Y-%m-%d %H:%M:%S')
+                            time_str = dt.strftime('%H:%M %d/%m')
+                        except:
+                            time_str = str(alert['created_at'])
+                else:
+                    time_str = '-'
                 self.alerts_table.setItem(i, 5, QTableWidgetItem(time_str))
                 
                 # Status
@@ -495,7 +522,8 @@ class BusinessAlertsModule(QWidget):
         
         # Get alert details
         title = self.alerts_table.item(row, 3).text()
-        query = "SELECT * FROM alerts WHERE title = %s ORDER BY created_at DESC LIMIT 1"
+        # Fixed: Changed %s to ?
+        query = "SELECT * FROM alerts WHERE title = ? ORDER BY created_at DESC LIMIT 1"
         alert = self.db.fetch_one(query, (title,))
         
         if alert:
@@ -518,7 +546,17 @@ class BusinessAlertsModule(QWidget):
         else:
             self.alert_severity_label.setStyleSheet("color: #2196F3;")
         
-        time_str = alert['created_at'].strftime('%d/%m/%Y %H:%M:%S') if alert['created_at'] else '-'
+        if alert['created_at']:
+            if hasattr(alert['created_at'], 'strftime'):
+                time_str = alert['created_at'].strftime('%d/%m/%Y %H:%M:%S')
+            else:
+                try:
+                    dt = datetime.strptime(alert['created_at'], '%Y-%m-%d %H:%M:%S')
+                    time_str = dt.strftime('%d/%m/%Y %H:%M:%S')
+                except:
+                    time_str = str(alert['created_at'])
+        else:
+            time_str = '-'
         self.alert_time_label.setText(time_str)
         
         status = "Resolved" if alert['is_resolved'] else ("Read" if alert['is_read'] else "Unread")
@@ -531,7 +569,8 @@ class BusinessAlertsModule(QWidget):
         self.current_alert = alert
     
     def mark_alert_read(self, alert_id):
-        query = "UPDATE alerts SET is_read = TRUE WHERE id = %s"
+        # Fixed: Changed %s to ?
+        query = "UPDATE alerts SET is_read = 1 WHERE id = ?"
         self.db.execute_query(query, (alert_id,))
     
     def mark_selected_read(self):
@@ -539,7 +578,8 @@ class BusinessAlertsModule(QWidget):
             chk = self.alerts_table.item(row, 0)
             if chk and chk.checkState() == Qt.Checked:
                 title = self.alerts_table.item(row, 3).text()
-                query = "UPDATE alerts SET is_read = TRUE WHERE title = %s"
+                # Fixed: Changed %s to ?
+                query = "UPDATE alerts SET is_read = 1 WHERE title = ?"
                 self.db.execute_query(query, (title,))
         
         self.load_alerts()
@@ -551,7 +591,8 @@ class BusinessAlertsModule(QWidget):
                                     QMessageBox.Yes | QMessageBox.No)
         
         if reply == QMessageBox.Yes:
-            query = "UPDATE alerts SET is_read = TRUE WHERE is_resolved = FALSE"
+            # Fixed: Changed for SQLite
+            query = "UPDATE alerts SET is_read = 1 WHERE is_resolved = 0"
             self.db.execute_query(query)
             self.load_alerts()
             QMessageBox.information(self, "Success", "All alerts marked as read.")
@@ -567,7 +608,8 @@ class BusinessAlertsModule(QWidget):
             chk = self.alerts_table.item(row, 0)
             if chk and chk.checkState() == Qt.Checked:
                 title = self.alerts_table.item(row, 3).text()
-                query = "UPDATE alerts SET is_resolved = TRUE, resolved_at = NOW() WHERE title = %s"
+                # Fixed: Changed %s to ?
+                query = "UPDATE alerts SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP WHERE title = ?"
                 self.db.execute_query(query, (title,))
         
         self.load_alerts()
@@ -580,7 +622,8 @@ class BusinessAlertsModule(QWidget):
                                         QMessageBox.Yes | QMessageBox.No)
             
             if reply == QMessageBox.Yes:
-                query = "UPDATE alerts SET is_resolved = TRUE, resolved_at = NOW() WHERE id = %s"
+                # Fixed: Changed %s to ?
+                query = "UPDATE alerts SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP WHERE id = ?"
                 self.db.execute_query(query, (self.current_alert['id'],))
                 self.load_alerts()
                 
@@ -595,4 +638,3 @@ class BusinessAlertsModule(QWidget):
                 'type': 'view_product',
                 'product_id': self.current_alert['product_id']
             })
-

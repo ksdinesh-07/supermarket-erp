@@ -268,24 +268,25 @@ class CentralizedPurchasesModule(QWidget):
             date_to = self.date_to.date().toString('yyyy-MM-dd')
             search = self.search_box.text()
             
+            # Fixed: Changed %s to ? and removed problematic syntax
             query = """
                 SELECT po.*, s.name as supplier_name
                 FROM purchase_orders po
                 LEFT JOIN suppliers s ON po.supplier_id = s.id
-                WHERE po.order_date BETWEEN %s AND %s
+                WHERE po.order_date BETWEEN ? AND ?
             """
             params = [date_from, date_to]
             
             if status != 'All':
-                query += " AND po.status = %s"
+                query += " AND po.status = ?"
                 params.append(status.lower())
             
             if supplier_id:
-                query += " AND po.supplier_id = %s"
+                query += " AND po.supplier_id = ?"
                 params.append(supplier_id)
             
             if search:
-                query += " AND (po.po_number LIKE %s OR s.name LIKE %s)"
+                query += " AND (po.po_number LIKE ? OR s.name LIKE ?)"
                 search_term = f"%{search}%"
                 params.extend([search_term, search_term])
             
@@ -327,7 +328,8 @@ class CentralizedPurchasesModule(QWidget):
     
     def load_po_details(self, po_number):
         try:
-            query = "SELECT * FROM purchase_orders WHERE po_number = %s"
+            # Fixed: Changed %s to ?
+            query = "SELECT * FROM purchase_orders WHERE po_number = ?"
             po = self.db.fetch_one(query, (po_number,))
             
             if po:
@@ -365,11 +367,12 @@ class CentralizedPurchasesModule(QWidget):
                 self.po_notes.setText(po['notes'] or '')
                 
                 # Load items
+                # Fixed: Changed %s to ?
                 items_query = """
                     SELECT poi.*, p.name as product_name
                     FROM purchase_order_items poi
                     LEFT JOIN products p ON poi.product_id = p.id
-                    WHERE poi.po_id = %s
+                    WHERE poi.po_id = ?
                 """
                 items = self.db.fetch_all(items_query, (po['id'],))
                 
@@ -554,12 +557,13 @@ class CentralizedPurchasesModule(QWidget):
             
             if self.current_po:
                 # Update existing PO
+                # Fixed: Changed %s to ?
                 query = """
                     UPDATE purchase_orders 
-                    SET supplier_id = %s, order_date = %s, expected_delivery = %s,
-                        total_items = %s, total_amount = %s, discount = %s,
-                        tax = %s, grand_total = %s, notes = %s
-                    WHERE id = %s
+                    SET supplier_id = ?, order_date = ?, expected_delivery = ?,
+                        total_items = ?, total_amount = ?, discount = ?,
+                        tax = ?, grand_total = ?, notes = ?
+                    WHERE id = ?
                 """
                 self.db.execute_query(query, (
                     self.supplier_combo.currentData(),
@@ -575,24 +579,27 @@ class CentralizedPurchasesModule(QWidget):
                 ))
                 
                 # Delete old items
-                del_query = "DELETE FROM purchase_order_items WHERE po_id = %s"
+                # Fixed: Changed %s to ?
+                del_query = "DELETE FROM purchase_order_items WHERE po_id = ?"
                 self.db.execute_query(del_query, (self.current_po['id'],))
                 
             else:
                 # Check if PO number exists
-                check_query = "SELECT id FROM purchase_orders WHERE po_number = %s"
+                # Fixed: Changed %s to ?
+                check_query = "SELECT id FROM purchase_orders WHERE po_number = ?"
                 existing = self.db.fetch_one(check_query, (self.po_number_label.text(),))
                 if existing:
                     QMessageBox.warning(self, "Duplicate", "PO number already exists!")
                     return
                 
                 # Insert new PO
+                # Fixed: Changed %s to ?
                 query = """
                     INSERT INTO purchase_orders (
                         po_number, supplier_id, order_date, expected_delivery,
                         status, total_items, total_amount, discount, tax,
                         grand_total, created_by, notes
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
                 cursor = self.db.execute_query(query, (
                     self.po_number_label.text(),
@@ -615,10 +622,11 @@ class CentralizedPurchasesModule(QWidget):
             # Insert items
             if self.current_po:
                 for item in self.po_items:
+                    # Fixed: Changed %s to ?
                     item_query = """
                         INSERT INTO purchase_order_items 
                         (po_id, product_id, quantity, unit_cost, total_cost, status)
-                        VALUES (%s, %s, %s, %s, %s, 'pending')
+                        VALUES (?, ?, ?, ?, ?, 'pending')
                     """
                     self.db.execute_query(item_query, (
                         self.current_po['id'],
@@ -647,7 +655,8 @@ class CentralizedPurchasesModule(QWidget):
         
         if reply == QMessageBox.Yes:
             try:
-                query = "UPDATE purchase_orders SET status = 'sent' WHERE id = %s"
+                # Fixed: Changed %s to ?
+                query = "UPDATE purchase_orders SET status = 'sent' WHERE id = ?"
                 self.db.execute_query(query, (self.current_po['id'],))
                 
                 self.po_status_label.setText("Sent")
@@ -752,10 +761,12 @@ class PurchaseProductDialog(QDialog):
         layout.addLayout(button_layout)
     
     def load_categories(self):
+        # Fixed: Changed to SQLite
         query = "SELECT DISTINCT category FROM products WHERE category IS NOT NULL"
         categories = self.db.fetch_all(query)
         for cat in categories:
-            self.category_filter.addItem(cat['category'])
+            if cat['category']:
+                self.category_filter.addItem(cat['category'])
     
     def load_products(self):
         search = self.search_input.text()
@@ -765,12 +776,13 @@ class PurchaseProductDialog(QDialog):
         params = []
         
         if search:
-            query += " AND (name LIKE %s OR barcode LIKE %s)"
+            # Fixed: Changed %s to ?
+            query += " AND (name LIKE ? OR barcode LIKE ?)"
             search_term = f"%{search}%"
             params.extend([search_term, search_term])
         
         if category and category != "All Categories":
-            query += " AND category = %s"
+            query += " AND category = ?"
             params.append(category)
         
         query += " ORDER BY name LIMIT 50"
@@ -788,7 +800,8 @@ class PurchaseProductDialog(QDialog):
     def select_product(self, item):
         row = item.row()
         barcode = self.products_table.item(row, 0).text()
-        query = "SELECT * FROM products WHERE barcode = %s"
+        # Fixed: Changed %s to ?
+        query = "SELECT * FROM products WHERE barcode = ?"
         self.selected_product = self.db.fetch_one(query, (barcode,))
         self.quantity = self.qty_spin.value()
         self.accept()
@@ -914,20 +927,21 @@ class ReceiveOrderDialog(QDialog):
                         item_status = 'partial'
                         all_completed = False
                     
-                    # Update in database
+                    # Update in database - Fixed: Changed %s to ?
                     query = """
                         UPDATE purchase_order_items 
-                        SET received_quantity = %s, status = %s
-                        WHERE id = %s
+                        SET received_quantity = ?, status = ?
+                        WHERE id = ?
                     """
                     self.db.execute_query(query, (new_received, item_status, item['id']))
                     
                     # Update product stock
                     if receiving_qty > 0:
+                        # Fixed: Changed %s to ?
                         stock_query = """
                             UPDATE products 
-                            SET quantity = quantity + %s 
-                            WHERE id = %s
+                            SET quantity = quantity + ? 
+                            WHERE id = ?
                         """
                         self.db.execute_query(stock_query, (receiving_qty, item['product_id']))
             
@@ -939,7 +953,8 @@ class ReceiveOrderDialog(QDialog):
             else:
                 po_status = 'confirmed'
             
-            po_query = "UPDATE purchase_orders SET status = %s WHERE id = %s"
+            # Fixed: Changed %s to ?
+            po_query = "UPDATE purchase_orders SET status = ? WHERE id = ?"
             self.db.execute_query(po_query, (po_status, self.po['id']))
             
             QMessageBox.information(self, "Success", "Receiving completed successfully!")

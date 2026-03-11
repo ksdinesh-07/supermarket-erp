@@ -7,6 +7,7 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QPixmap, QColor
 from database.connection import DatabaseConnection
 from utils.helpers import format_currency, generate_invoice_number
+from datetime import datetime
 import uuid
 
 class SelfCheckoutKiosk(QWidget):
@@ -231,9 +232,10 @@ class SelfCheckoutKiosk(QWidget):
     def create_session(self):
         try:
             session_id = str(uuid.uuid4())
+            # Fixed: Changed %s to ? for SQLite
             query = """
                 INSERT INTO kiosk_sessions (session_id, kiosk_number, status)
-                VALUES (%s, %s, 'active')
+                VALUES (?, ?, 'active')
             """
             cursor = self.db.execute_query(query, (session_id, self.kiosk_number))
             if cursor:
@@ -249,8 +251,8 @@ class SelfCheckoutKiosk(QWidget):
         if not barcode:
             return
         
-        # Find product
-        query = "SELECT * FROM products WHERE barcode = %s"
+        # Find product - Fixed: Changed %s to ?
+        query = "SELECT * FROM products WHERE barcode = ?"
         product = self.db.fetch_one(query, (barcode,))
         
         if product:
@@ -285,9 +287,10 @@ class SelfCheckoutKiosk(QWidget):
     
     def save_to_session(self, product_id, quantity):
         if self.current_session:
+            # Fixed: Changed %s to ?
             query = """
                 INSERT INTO kiosk_cart_items (session_id, product_id, quantity, price)
-                VALUES (%s, %s, %s, %s)
+                VALUES (?, ?, ?, ?)
             """
             self.db.execute_query(query, (
                 self.current_session['id'],
@@ -297,7 +300,8 @@ class SelfCheckoutKiosk(QWidget):
             ))
     
     def get_product_price(self, product_id):
-        query = "SELECT selling_price FROM products WHERE id = %s"
+        # Fixed: Changed %s to ?
+        query = "SELECT selling_price FROM products WHERE id = ?"
         result = self.db.fetch_one(query, (product_id,))
         return result['selling_price'] if result else 0
     
@@ -370,8 +374,8 @@ class SelfCheckoutKiosk(QWidget):
             
             # Update session
             if self.current_session:
-                # Delete old and insert new
-                del_query = "DELETE FROM kiosk_cart_items WHERE session_id = %s AND product_id = %s"
+                # Delete old and insert new - Fixed: Changed %s to ?
+                del_query = "DELETE FROM kiosk_cart_items WHERE session_id = ? AND product_id = ?"
                 self.db.execute_query(del_query, (self.current_session['id'], self.cart_items[index]['product_id']))
                 
                 if self.cart_items[index]['quantity'] > 0:
@@ -402,10 +406,10 @@ class SelfCheckoutKiosk(QWidget):
         try:
             invoice = generate_invoice_number()
             
-            # Insert sale
+            # Insert sale - Fixed: Changed %s to ?
             sale_query = """
                 INSERT INTO sales (invoice_number, user_id, total_amount, tax, billing_type, payment_method)
-                VALUES (%s, %s, %s, %s, 'self_checkout', %s)
+                VALUES (?, ?, ?, ?, 'self_checkout', ?)
             """
             cursor = self.db.execute_query(sale_query, (invoice, self.user['id'], total, tax, method))
             
@@ -414,9 +418,10 @@ class SelfCheckoutKiosk(QWidget):
                 
                 # Insert items and update stock
                 for item in self.cart_items:
+                    # Fixed: Changed %s to ?
                     item_query = """
                         INSERT INTO sale_items (sale_id, product_id, quantity, price, subtotal)
-                        VALUES (%s, %s, %s, %s, %s)
+                        VALUES (?, ?, ?, ?, ?)
                     """
                     self.db.execute_query(item_query, (
                         sale_id,
@@ -426,12 +431,12 @@ class SelfCheckoutKiosk(QWidget):
                         item['subtotal']
                     ))
                     
-                    # Update stock
-                    stock_query = "UPDATE products SET quantity = quantity - %s WHERE id = %s"
+                    # Update stock - Fixed: Changed %s to ?
+                    stock_query = "UPDATE products SET quantity = quantity - ? WHERE id = ?"
                     self.db.execute_query(stock_query, (item['quantity'], item['product_id']))
                 
-                # Update kiosk session
-                update_query = "UPDATE kiosk_sessions SET status = 'completed', end_time = NOW() WHERE id = %s"
+                # Update kiosk session - Fixed: Changed %s to ?
+                update_query = "UPDATE kiosk_sessions SET status = 'completed', end_time = CURRENT_TIMESTAMP WHERE id = ?"
                 self.db.execute_query(update_query, (self.current_session['id'],))
                 
                 # Show receipt
@@ -564,7 +569,8 @@ class ProductSearchDialog(QDialog):
     def load_products(self):
         search = self.search_input.text()
         if search:
-            query = "SELECT * FROM products WHERE name LIKE %s OR barcode LIKE %s LIMIT 20"
+            # Fixed: Changed %s to ?
+            query = "SELECT * FROM products WHERE name LIKE ? OR barcode LIKE ? LIMIT 20"
             search_term = f"%{search}%"
             products = self.db.fetch_all(query, (search_term, search_term))
         else:
@@ -585,7 +591,8 @@ class ProductSearchDialog(QDialog):
     def select_product(self, item):
         row = item.row()
         barcode = self.products_table.item(row, 0).text()
-        query = "SELECT * FROM products WHERE barcode = %s"
+        # Fixed: Changed %s to ?
+        query = "SELECT * FROM products WHERE barcode = ?"
         self.selected_product = self.db.fetch_one(query, (barcode,))
         self.quantity = self.qty_spin.value()
         self.accept()

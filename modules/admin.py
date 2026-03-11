@@ -2,9 +2,9 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                            QPushButton, QTableWidget, QTableWidgetItem,
                            QHeaderView, QGroupBox, QGridLayout, QLineEdit,
                            QComboBox, QTextEdit, QSpinBox, QDoubleSpinBox,
-                           QMessageBox, QDialog, QFormLayout, QTabWidget,
-                           QFrame, QCheckBox, QFileDialog, QDateTimeEdit)
-from PyQt5.QtCore import Qt, QDate, QDateTime, pyqtSignal
+                           QMessageBox, QDialog, QFormLayout, QTabWidget, 
+                           QFrame, QCheckBox, QFileDialog)
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
 from database.connection import DatabaseConnection
 from utils.helpers import format_currency
@@ -221,6 +221,7 @@ class AdminModule(QWidget):
             
             self.users_table.setRowCount(len(users))
             for i, user in enumerate(users):
+                # Access values using dictionary-style access (user['key']) not user.get()
                 self.users_table.setItem(i, 0, QTableWidgetItem(user['username']))
                 self.users_table.setItem(i, 1, QTableWidgetItem(user['full_name']))
                 
@@ -233,11 +234,47 @@ class AdminModule(QWidget):
                     role_item.setForeground(QColor('#4CAF50'))
                 self.users_table.setItem(i, 2, role_item)
                 
-                created_str = user['created_at'].strftime('%d/%m/%Y') if user['created_at'] else '-'
+                # Handle created_at date
+                created_at = user['created_at'] if 'created_at' in user else ''
+                if created_at:
+                    if hasattr(created_at, 'strftime'):
+                        created_str = created_at.strftime('%d/%m/%Y')
+                    else:
+                        try:
+                            # Try to parse string date
+                            if isinstance(created_at, str):
+                                # Handle SQLite date format
+                                if ' ' in created_at:
+                                    date_part = created_at.split(' ')[0]
+                                else:
+                                    date_part = created_at
+                                dt = datetime.strptime(date_part, '%Y-%m-%d')
+                                created_str = dt.strftime('%d/%m/%Y')
+                            else:
+                                created_str = str(created_at)
+                        except:
+                            created_str = '-'
+                else:
+                    created_str = '-'
                 self.users_table.setItem(i, 3, QTableWidgetItem(created_str))
                 
-                last_login_str = user['last_login'].strftime('%d/%m/%Y %H:%M') if user['last_login'] else 'Never'
-                self.users_table.setItem(i, 4, QTableWidgetItem(last_login_str))
+                # Handle last_login
+                last_login = user['last_login'] if 'last_login' in user else ''
+                if last_login:
+                    if hasattr(last_login, 'strftime'):
+                        login_str = last_login.strftime('%d/%m/%Y %H:%M')
+                    else:
+                        try:
+                            if isinstance(last_login, str):
+                                dt = datetime.strptime(last_login, '%Y-%m-%d %H:%M:%S')
+                                login_str = dt.strftime('%d/%m/%Y %H:%M')
+                            else:
+                                login_str = str(last_login)
+                        except:
+                            login_str = 'Never'
+                else:
+                    login_str = 'Never'
+                self.users_table.setItem(i, 4, QTableWidgetItem(login_str))
                 
                 # Action buttons
                 actions_widget = QWidget()
@@ -264,9 +301,10 @@ class AdminModule(QWidget):
     def load_backup_info(self):
         # This would check the filesystem for backups
         # For now, show sample data
+        from datetime import datetime
         self.last_backup_label.setText(datetime.now().strftime('%d/%m/%Y %H:%M'))
         self.backup_size_label.setText("2.3 MB")
-        self.total_tables_label.setText("12")
+        self.total_tables_label.setText("20")
         
         # Sample backup history
         self.backup_history_table.setRowCount(3)
@@ -274,7 +312,7 @@ class AdminModule(QWidget):
             date = datetime.now().strftime('%d/%m/%Y %H:%M')
             self.backup_history_table.setItem(i, 0, QTableWidgetItem(date))
             self.backup_history_table.setItem(i, 1, QTableWidgetItem("2.3 MB"))
-            self.backup_history_table.setItem(i, 2, QTableWidgetItem("12"))
+            self.backup_history_table.setItem(i, 2, QTableWidgetItem("20"))
             
             restore_btn = QPushButton("↩️ Restore")
             restore_btn.clicked.connect(lambda: QMessageBox.information(self, "Restore", "Restore functionality coming soon!"))
@@ -282,9 +320,11 @@ class AdminModule(QWidget):
     
     def load_audit_log(self):
         # Sample audit log data
+        from datetime import datetime
         self.audit_table.setRowCount(5)
         for i in range(5):
-            self.audit_table.setItem(i, 0, QTableWidgetItem(datetime.now().strftime('%d/%m/%Y %H:%M')))
+            date_str = datetime.now().strftime('%d/%m/%Y %H:%M')
+            self.audit_table.setItem(i, 0, QTableWidgetItem(date_str))
             self.audit_table.setItem(i, 1, QTableWidgetItem("admin"))
             self.audit_table.setItem(i, 2, QTableWidgetItem("Login"))
             self.audit_table.setItem(i, 3, QTableWidgetItem("System"))
@@ -351,23 +391,22 @@ class AdminModule(QWidget):
     def log_audit(self, action, details):
         # Log to audit table
         try:
-            # Create audit_log table if not exists
+            # Create audit_log table if it doesn't exist
             create_query = """
                 CREATE TABLE IF NOT EXISTS audit_log (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT,
-                    action VARCHAR(100),
-                    module VARCHAR(100),
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    action TEXT,
+                    module TEXT,
                     details TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """
             self.db.execute_query(create_query)
             
             query = """
                 INSERT INTO audit_log (user_id, action, module, details)
-                VALUES (%s, %s, %s, %s)
+                VALUES (?, ?, ?, ?)
             """
             self.db.execute_query(query, (self.user['id'], action, "Admin", details))
         except Exception as e:
@@ -448,7 +487,7 @@ class AddUserDialog(QDialog):
             user_model = UserModel()
             
             # Check if username exists
-            check_query = "SELECT id FROM users WHERE username = %s"
+            check_query = "SELECT id FROM users WHERE username = ?"
             existing = self.db.fetch_one(check_query, (self.username.text(),))
             if existing:
                 QMessageBox.warning(self, "Duplicate", "Username already exists!")
@@ -553,7 +592,7 @@ class EditUserDialog(QDialog):
             if self.reset_password.isChecked():
                 import hashlib
                 password_hash = hashlib.sha256(self.new_password.text().encode()).hexdigest()
-                query = "UPDATE users SET password_hash = %s WHERE id = %s"
+                query = "UPDATE users SET password_hash = ? WHERE id = ?"
                 self.db.execute_query(query, (password_hash, self.user['id']))
             
             QMessageBox.information(self, "Success", "User updated successfully!")

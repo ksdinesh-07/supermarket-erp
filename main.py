@@ -1,10 +1,11 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QSplashScreen, QMessageBox, QDesktopWidget
+from PyQt5.QtWidgets import QApplication, QSplashScreen, QMessageBox
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtCore import Qt, QTimer
 from modules.login import LoginDialog
 from database.connection import DatabaseConnection
+from database.init_db import init_database
 
 class SupermarketERP:
     def __init__(self):
@@ -12,17 +13,32 @@ class SupermarketERP:
         self.app.setApplicationName("Supermarket ERP System")
         self.app.setApplicationVersion("1.0.0")
         
-        # Set application icon (you can add an icon file later)
-        # self.app.setWindowIcon(QIcon('ui/resources/app_icon.png'))
+        # Initialize database (SQLite)
+        self.init_database_if_needed()
         
         # Show splash screen
         self.show_splash()
         
         # Initialize database connection
-        self.init_database()
+        self.init_database_connection()
         
         # Show login dialog
         self.show_login()
+    
+    def init_database_if_needed(self):
+        """Initialize SQLite database if it doesn't exist"""
+        db_path = 'supermarket.db'
+        if not os.path.exists(db_path):
+            print("📦 First run detected. Creating database...")
+            try:
+                init_database()
+                print("✅ Database created successfully!")
+            except Exception as e:
+                print(f"❌ Error creating database: {e}")
+                QMessageBox.critical(None, "Database Error", 
+                                   f"Failed to create database: {str(e)}")
+        else:
+            print(f"📦 Database found at: {db_path}")
     
     def show_splash(self):
         # Create a simple splash screen
@@ -33,14 +49,14 @@ class SupermarketERP:
         self.splash.showMessage("Loading Supermarket ERP...", Qt.AlignBottom | Qt.AlignCenter, Qt.blue)
         QTimer.singleShot(2000, self.splash.close)
     
-    def init_database(self):
+    def init_database_connection(self):
         try:
-            db = DatabaseConnection()
-            if db.connect():
-                print("Database initialized successfully")
+            self.db = DatabaseConnection()
+            if self.db.connect():
+                print("Database connected successfully!")
             else:
                 QMessageBox.warning(None, "Database Warning", 
-                                   "Could not connect to database. Please check your MySQL connection.")
+                                   "Could not connect to database.")
         except Exception as e:
             QMessageBox.critical(None, "Database Error", f"Database error: {str(e)}")
     
@@ -57,22 +73,7 @@ class SupermarketERP:
     def show_main_window(self):
         from modules.dashboard import MainDashboard
         self.dashboard = MainDashboard(self.user)
-        
-        # Get screen size and set window to fit
-        screen = QDesktopWidget().screenGeometry()
-        width = int(screen.width() * 0.9)  # 90% of screen width
-        height = int(screen.height() * 0.9)  # 90% of screen height
-        
-        self.dashboard.resize(width, height)
-        
-        # Center the window
-        frame_geometry = self.dashboard.frameGeometry()
-        center_point = QDesktopWidget().availableGeometry().center()
-        frame_geometry.moveCenter(center_point)
-        self.dashboard.move(frame_geometry.topLeft())
-        
         self.dashboard.show()
-        self.dashboard.showMaximized()  # Start maximized for best fit
     
     def run(self):
         return self.app.exec_()

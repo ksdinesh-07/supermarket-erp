@@ -438,7 +438,7 @@ class ReportsModule(QWidget):
     
     def load_categories(self):
         try:
-            query = "SELECT DISTINCT category FROM products WHERE category IS NOT NULL"
+            query = "SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != ''"
             categories = self.db.fetch_all(query)
             for cat in categories:
                 if cat['category']:
@@ -448,19 +448,25 @@ class ReportsModule(QWidget):
     
     def load_dashboard(self):
         try:
+            from datetime import date, timedelta
+            
+            today = date.today().isoformat()
+            week_ago = (date.today() - timedelta(days=7)).isoformat()
+            month_ago = (date.today() - timedelta(days=30)).isoformat()
+            
             # Today's sales
-            today_query = "SELECT COALESCE(SUM(total_amount), 0) as total FROM sales WHERE DATE(created_at) = CURDATE()"
-            today_result = self.db.fetch_one(today_query)
+            today_query = "SELECT COALESCE(SUM(total_amount), 0) as total FROM sales WHERE DATE(created_at) = ?"
+            today_result = self.db.fetch_one(today_query, (today,))
             today_sales = today_result['total'] if today_result else 0
             
             # Weekly sales
-            week_query = "SELECT COALESCE(SUM(total_amount), 0) as total FROM sales WHERE DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)"
-            week_result = self.db.fetch_one(week_query)
+            week_query = "SELECT COALESCE(SUM(total_amount), 0) as total FROM sales WHERE DATE(created_at) >= ?"
+            week_result = self.db.fetch_one(week_query, (week_ago,))
             week_sales = week_result['total'] if week_result else 0
             
             # Monthly sales
-            month_query = "SELECT COALESCE(SUM(total_amount), 0) as total FROM sales WHERE DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)"
-            month_result = self.db.fetch_one(month_query)
+            month_query = "SELECT COALESCE(SUM(total_amount), 0) as total FROM sales WHERE DATE(created_at) >= ?"
+            month_result = self.db.fetch_one(month_query, (month_ago,))
             month_sales = month_result['total'] if month_result else 0
             
             # Update cards
@@ -501,31 +507,29 @@ class ReportsModule(QWidget):
             return
             
         try:
+            from datetime import date, timedelta
+            
             # Get last 7 days sales
-            query = """
-                SELECT DATE(created_at) as date, COALESCE(SUM(total_amount), 0) as total
-                FROM sales
-                WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-                GROUP BY DATE(created_at)
-                ORDER BY date
-            """
-            data = self.db.fetch_all(query)
+            dates = []
+            amounts = []
+            
+            for i in range(6, -1, -1):
+                day = (date.today() - timedelta(days=i)).isoformat()
+                query = "SELECT COALESCE(SUM(total_amount), 0) as total FROM sales WHERE DATE(created_at) = ?"
+                result = self.db.fetch_one(query, (day,))
+                
+                dates.append((date.today() - timedelta(days=i)).strftime('%d/%m'))
+                amounts.append(float(result['total']) if result else 0)
             
             # Clear previous figure
             self.sales_figure.clear()
             ax = self.sales_figure.add_subplot(111)
             
-            if data:
-                dates = [row['date'].strftime('%d/%m') for row in data]
-                amounts = [float(row['total']) for row in data]
-                
-                ax.bar(dates, amounts, color='#2196F3')
-                ax.set_xlabel('Date')
-                ax.set_ylabel('Sales (₹)')
-                ax.set_title('Daily Sales')
-                ax.tick_params(axis='x', rotation=45)
-            else:
-                ax.text(0.5, 0.5, 'No data available', ha='center', va='center')
+            ax.bar(dates, amounts, color='#2196F3')
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Sales (₹)')
+            ax.set_title('Daily Sales')
+            ax.tick_params(axis='x', rotation=45)
             
             self.sales_figure.tight_layout()
             self.sales_canvas.draw()
@@ -536,7 +540,8 @@ class ReportsModule(QWidget):
     def load_top_products(self):
         try:
             query = """
-                SELECT p.name, COALESCE(SUM(si.quantity), 0) as total_qty, 
+                SELECT p.name, 
+                       COALESCE(SUM(si.quantity), 0) as total_qty, 
                        COALESCE(SUM(si.subtotal), 0) as total_revenue
                 FROM products p
                 LEFT JOIN sale_items si ON p.id = si.product_id
@@ -569,7 +574,12 @@ class ReportsModule(QWidget):
             
             self.activity_table.setRowCount(len(activities))
             for i, activity in enumerate(activities):
-                time_str = activity['created_at'].strftime('%H:%M %d/%m')
+                # Handle datetime object
+                if hasattr(activity['created_at'], 'strftime'):
+                    time_str = activity['created_at'].strftime('%H:%M %d/%m')
+                else:
+                    time_str = str(activity['created_at'])
+                
                 self.activity_table.setItem(i, 0, QTableWidgetItem(time_str))
                 self.activity_table.setItem(i, 1, QTableWidgetItem(f"Sale #{activity['invoice_number']}"))
                 self.activity_table.setItem(i, 2, QTableWidgetItem(f"{format_currency(activity['total_amount'])} by {activity['username']}"))
@@ -588,12 +598,12 @@ class ReportsModule(QWidget):
                 FROM sales s
                 LEFT JOIN users u ON s.user_id = u.id
                 LEFT JOIN customers c ON s.customer_id = c.id
-                WHERE DATE(s.created_at) BETWEEN %s AND %s
+                WHERE DATE(s.created_at) BETWEEN ? AND ?
             """
             params = [date_from, date_to]
             
             if payment != "All":
-                query += " AND s.payment_method = %s"
+                query += " AND s.payment_method = ?"
                 params.append(payment.lower())
             
             query += " ORDER BY s.created_at DESC"
@@ -605,7 +615,13 @@ class ReportsModule(QWidget):
             total_amount = 0
             
             for i, sale in enumerate(sales):
-                self.sales_report_table.setItem(i, 0, QTableWidgetItem(sale['created_at'].strftime('%d/%m/%Y %H:%M')))
+                # Handle datetime
+                if hasattr(sale['created_at'], 'strftime'):
+                    date_str = sale['created_at'].strftime('%d/%m/%Y %H:%M')
+                else:
+                    date_str = str(sale['created_at'])
+                
+                self.sales_report_table.setItem(i, 0, QTableWidgetItem(date_str))
                 self.sales_report_table.setItem(i, 1, QTableWidgetItem(sale['invoice_number']))
                 self.sales_report_table.setItem(i, 2, QTableWidgetItem(sale.get('customer_name', 'Walk-in') or 'Walk-in'))
                 self.sales_report_table.setItem(i, 3, QTableWidgetItem("-"))  # Items count
@@ -760,7 +776,7 @@ class ReportsModule(QWidget):
             params = []
             
             if category != "All Categories":
-                query += " AND p.category = %s"
+                query += " AND p.category = ?"
                 params.append(category)
             
             query += " GROUP BY p.id"
@@ -815,7 +831,11 @@ class ReportsModule(QWidget):
     
     def load_financial_report(self):
         try:
+            from datetime import datetime
+            
             # Get current month's data
+            current_month = datetime.now().strftime('%Y-%m')
+            
             query = """
                 SELECT 
                     COALESCE(SUM(s.total_amount), 0) as revenue,
@@ -823,10 +843,9 @@ class ReportsModule(QWidget):
                 FROM sales s
                 LEFT JOIN sale_items si ON s.id = si.sale_id
                 LEFT JOIN products p ON si.product_id = p.id
-                WHERE MONTH(s.created_at) = MONTH(CURDATE())
-                AND YEAR(s.created_at) = YEAR(CURDATE())
+                WHERE strftime('%Y-%m', s.created_at) = ?
             """
-            current = self.db.fetch_one(query)
+            current = self.db.fetch_one(query, (current_month,))
             
             revenue = current['revenue'] if current else 0
             cost = current['cost'] if current else 0
@@ -841,13 +860,13 @@ class ReportsModule(QWidget):
             # Monthly breakdown
             monthly_query = """
                 SELECT 
-                    DATE_FORMAT(s.created_at, '%Y-%m') as month,
+                    strftime('%Y-%m', s.created_at) as month,
                     COALESCE(SUM(s.total_amount), 0) as revenue,
                     COALESCE(SUM(si.quantity * p.cost_price), 0) as cost
                 FROM sales s
                 LEFT JOIN sale_items si ON s.id = si.sale_id
                 LEFT JOIN products p ON si.product_id = p.id
-                GROUP BY DATE_FORMAT(s.created_at, '%Y-%m')
+                GROUP BY month
                 ORDER BY month DESC
                 LIMIT 6
             """
