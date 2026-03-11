@@ -44,46 +44,34 @@ jobs:
     - name: Verify executable was created
       shell: pwsh
       run: |
-        Write-Host "Contents of dist folder:" -ForegroundColor Green
-        Get-ChildItem -Path dist -Recurse
         if (-not (Test-Path "dist\SupermarketERP.exe")) {
-          Write-Host "❌ Executable not found!" -ForegroundColor Red
           exit 1
         }
-        Write-Host "✅ Executable found successfully!" -ForegroundColor Green
     
     - name: Download Inno Setup
       shell: pwsh
       run: |
-        Write-Host "Downloading Inno Setup..." -ForegroundColor Green
         Invoke-WebRequest -Uri "https://jrsoftware.org/download.php/is.exe" -OutFile "innosetup.exe"
     
     - name: Install Inno Setup silently
       shell: pwsh
       run: |
-        Write-Host "Installing Inno Setup..." -ForegroundColor Green
         Start-Process -FilePath ".\innosetup.exe" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
     
     - name: Create installer with Inno Setup
       shell: pwsh
       run: |
-        Write-Host "Creating installer..." -ForegroundColor Green
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "❌ Inno Setup compilation failed!" -ForegroundColor Red
           exit 1
         }
     
     - name: Verify installer was created
       shell: pwsh
       run: |
-        Write-Host "Contents of installer folder:" -ForegroundColor Green
-        Get-ChildItem -Path installer -Recurse
         if (-not (Test-Path "installer\SupermarketERP_Setup.exe")) {
-          Write-Host "❌ Installer not found!" -ForegroundColor Red
           exit 1
         }
-        Write-Host "✅ Installer created successfully!" -ForegroundColor Green
     
     - name: Upload installer as artifact
       uses: actions/upload-artifact@v4
@@ -99,69 +87,6 @@ jobs:
           installer/SupermarketERP_Setup.exe
           README.md
         name: Supermarket ERP ${{ github.ref_name }}
-        body: |
-          # 🏪 Supermarket ERP System v${{ github.ref_name }}
-          
-          ## 📥 Download
-          Click on **SupermarketERP_Setup.exe** below to download the installer.
-          
-          ## 🔑 Default Login
-          - **Username:** `admin`
-          - **Password:** `admin123`
-          
-          ## ✨ Features
-          - 📊 Dashboard with real-time analytics
-          - 📦 Products Management
-          - 👥 Customer Management
-          - ⚡ Superfast Billing with barcode
-          - 🛵 Online Orders & Delivery
-          - 🛒 Self Checkout Kiosk
-          - 📥 Goods Inward
-          - 📊 Stock Audit
-          - 📋 Purchase Orders
-          - 📈 Reports & Analytics
-          - 🔔 Business Alerts
-          - ⚙️ Admin Panel
-          
-          ## 📋 Installation Instructions
-          
-          ### Windows (One-Click Install)
-          1. Download `SupermarketERP_Setup.exe`
-          2. Double-click the file
-          3. Click "Yes" if Windows asks for permission
-          4. Follow the installer (just click Next)
-          5. Click "Finish" when done
-          6. The app starts automatically!
-          
-          ### Linux
-          ```bash
-          git clone https://github.com/ksdinesh-07/supermarket-erp.git
-          cd supermarket-erp
-          python3 -m pip install -r requirements.txt
-          python3 main.py
-
-🗄️ No Database Setup Needed!
-
-    SQLite database creates itself automatically
-
-    No MySQL installation required
-
-    No server configuration needed
-
-📋 System Requirements
-
-    Windows: Windows 10 or 11
-
-    Linux: Ubuntu 20.04+ (with Python 3.8+)
-
-    RAM: 4GB minimum
-
-    Disk: 500MB free space
-
-📞 Support
-
-For issues, please open an issue on GitHub.
-
-
-env:
-GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        body: Supermarket ERP System ${{ github.ref_name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
