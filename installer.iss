@@ -6,6 +6,7 @@ AppName=Supermarket ERP
 AppVersion=1.0
 AppPublisher=KSDinesh-07
 AppPublisherURL=https://github.com/ksdinesh-07/supermarket-erp
+AppSupportURL=https://github.com/ksdinesh-07/supermarket-erp/issues
 DefaultDirName={autopf}\SupermarketERP
 DefaultGroupName=Supermarket ERP
 UninstallDisplayIcon={app}\SupermarketERP.exe
@@ -25,19 +26,41 @@ Name: "desktopicon"; Description: "Create desktop shortcut"; GroupDescription: "
 Name: "startmenuicon"; Description: "Create Start Menu shortcut"; GroupDescription: "Additional icons:"; Flags: checkedonce
 
 [Files]
+; Main executable
 Source: "dist\SupermarketERP.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "database\*"; DestDir: "{app}\database"; Flags: ignoreversion recursesubdirs
-Source: "ui\*"; DestDir: "{app}\ui"; Flags: ignoreversion recursesubdirs
+
+; Python modules
+Source: "modules\*.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+Source: "modules\*\*.py"; DestDir: "{app}\modules"; Flags: ignoreversion recursesubdirs
+
+; Database files
+Source: "database\*.py"; DestDir: "{app}\database"; Flags: ignoreversion
+Source: "database\*.sql"; DestDir: "{app}\database"; Flags: ignoreversion
+
+; UI files
+Source: "ui\styles\*.qss"; DestDir: "{app}\ui\styles"; Flags: ignoreversion
+
+; Utility files
+Source: "utils\*.py"; DestDir: "{app}\utils"; Flags: ignoreversion
+
+; Configuration and main files
 Source: "config.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "main.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Supermarket ERP"; Filename: "{app}\SupermarketERP.exe"
-Name: "{autodesktop}\Supermarket ERP"; Filename: "{app}\SupermarketERP.exe"; Tasks: desktopicon
-Name: "{userstartmenu}\Supermarket ERP"; Filename: "{app}\SupermarketERP.exe"; Tasks: startmenuicon
+Name: "{group}\Supermarket ERP"; Filename: "{app}\SupermarketERP.exe"; WorkingDir: "{app}"
+Name: "{group}\Uninstall Supermarket ERP"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\Supermarket ERP"; Filename: "{app}\SupermarketERP.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userstartmenu}\Supermarket ERP"; Filename: "{app}\SupermarketERP.exe"; WorkingDir: "{app}"; Tasks: startmenuicon
 
 [Run]
 Filename: "{app}\SupermarketERP.exe"; Description: "Launch Supermarket ERP"; Flags: postinstall nowait skipifsilent
+
+[UninstallRun]
+Filename: "{cmd}"; Parameters: "/c taskkill /f /im SupermarketERP.exe 2>nul"; Flags: runhidden
 
 [Code]
 function InitializeSetup(): Boolean;
