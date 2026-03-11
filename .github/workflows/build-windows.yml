@@ -2,7 +2,9 @@ name: Build Windows Executable
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -10,24 +12,116 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
+        architecture: 'x64'
     
-    - name: Install dependencies
+    - name: Install Python packages
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller PyQt5 pymysql mysql-connector-python matplotlib
     
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onefile --windowed --name "SupermarketERP.exe" main.py
+        pyinstaller --onefile `
+          --windowed `
+          --name "SupermarketERP" `
+          --add-data "ui/styles;ui/styles" `
+          --add-data "database/schema.sql;." `
+          --add-data "database/schema_update_fixed.sql;." `
+          --hidden-import PyQt5.QtCore `
+          --hidden-import PyQt5.QtGui `
+          --hidden-import PyQt5.QtWidgets `
+          --hidden-import pymysql `
+          --hidden-import mysql.connector `
+          --hidden-import matplotlib `
+          main.py
+    
+    - name: Create installer package
+      shell: cmd
+      run: |
+        mkdir release
+        copy dist\SupermarketERP.exe release\
+        copy database\schema.sql release\
+        copy database\schema_update_fixed.sql release\
+        copy config.py release\
+        
+        echo @echo off > release\INSTALL.bat
+        echo echo ======================================== >> release\INSTALL.bat
+        echo echo    Supermarket ERP - One Click Install >> release\INSTALL.bat
+        echo echo ======================================== >> release\INSTALL.bat
+        echo echo. >> release\INSTALL.bat
+        echo echo [1/4] Creating installation folder... >> release\INSTALL.bat
+        echo if not exist "%%USERPROFILE%%\SupermarketERP" mkdir "%%USERPROFILE%%\SupermarketERP" >> release\INSTALL.bat
+        echo. >> release\INSTALL.bat
+        echo echo [2/4] Copying files... >> release\INSTALL.bat
+        echo copy /Y "%%~dp0SupermarketERP.exe" "%%USERPROFILE%%\SupermarketERP\" >> release\INSTALL.bat
+        echo copy /Y "%%~dp0schema.sql" "%%USERPROFILE%%\SupermarketERP\" >> release\INSTALL.bat
+        echo copy /Y "%%~dp0config.py" "%%USERPROFILE%%\SupermarketERP\" >> release\INSTALL.bat
+        echo. >> release\INSTALL.bat
+        echo echo [3/4] Creating desktop shortcut... >> release\INSTALL.bat
+        echo powershell "$WS = New-Object -ComObject WScript.Shell; $SC = $WS.CreateShortcut('%%USERPROFILE%%\Desktop\Supermarket ERP.lnk'); $SC.TargetPath = '%%USERPROFILE%%\SupermarketERP\SupermarketERP.exe'; $SC.Save()" >> release\INSTALL.bat
+        echo. >> release\INSTALL.bat
+        echo echo [4/4] Adding to PATH... >> release\INSTALL.bat
+        echo setx PATH "%%PATH%%;%%USERPROFILE%%\SupermarketERP" /M >nul 2>&1 >> release\INSTALL.bat
+        echo. >> release\INSTALL.bat
+        echo echo ======================================== >> release\INSTALL.bat
+        echo echo    ✅ INSTALLATION COMPLETE! >> release\INSTALL.bat
+        echo echo ======================================== >> release\INSTALL.bat
+        echo echo. >> release\INSTALL.bat
+        echo echo 🔑 Default login: admin / admin123 >> release\INSTALL.bat
+        echo echo. >> release\INSTALL.bat
+        echo echo Starting Supermarket ERP... >> release\INSTALL.bat
+        echo start "" "%%USERPROFILE%%\SupermarketERP\SupermarketERP.exe" >> release\INSTALL.bat
+        echo. >> release\INSTALL.bat
+        echo pause >> release\INSTALL.bat
+    
+    - name: Create README
+      shell: cmd
+      run: |
+        echo ======================================== > release\README.txt
+        echo    SUPERMARKET ERP - WINDOWS VERSION    >> release\README.txt
+        echo ======================================== >> release\README.txt
+        echo. >> release\README.txt
+        echo 📋 QUICK INSTALL: >> release\README.txt
+        echo 1. Double-click INSTALL.bat >> release\README.txt
+        echo 2. Click "Yes" if Windows asks >> release\README.txt
+        echo 3. Done! App will start automatically >> release\README.txt
+        echo. >> release\README.txt
+        echo 🔑 LOGIN: admin / admin123 >> release\README.txt
+        echo. >> release\README.txt
+        echo 📁 Installed to: %%USERPROFILE%%\SupermarketERP >> release\README.txt
+        echo. >> release\README.txt
+        echo 📋 REQUIREMENTS: >> release\README.txt
+        echo - Windows 10 or 11 >> release\README.txt
+        echo - MySQL Server (download from mysql.com) >> release\README.txt
+        echo. >> release\README.txt
+        echo 📞 SUPPORT: your-email@example.com >> release\README.txt
     
     - name: Upload executable
       uses: actions/upload-artifact@v4
       with:
-        name: SupermarketERP-Windows
+        name: SupermarketERP-Windows-Executable
         path: dist/SupermarketERP.exe
+    
+    - name: Upload installer package
+      uses: actions/upload-artifact@v4
+      with:
+        name: SupermarketERP-Windows-Installer
+        path: release/
+    
+    - name: Upload full package
+      uses: actions/upload-artifact@v4
+      with:
+        name: SupermarketERP-Complete
+        path: |
+          dist/SupermarketERP.exe
+          database/schema.sql
+          database/schema_update_fixed.sql
+          config.py
+          README.md
