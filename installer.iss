@@ -1,6 +1,3 @@
-; Supermarket ERP Installer
-; APK-style installation for Windows
-
 [Setup]
 AppName=Supermarket ERP
 AppVersion=1.0
@@ -14,7 +11,6 @@ Compression=lzma2
 SolidCompression=yes
 OutputDir=installer
 OutputBaseFilename=SupermarketERP_Setup
-SetupIconFile=icon.ico
 WizardStyle=modern
 PrivilegesRequired=admin
 
@@ -26,29 +22,17 @@ Name: "desktopicon"; Description: "Create desktop shortcut"; GroupDescription: "
 Name: "startmenuicon"; Description: "Create Start Menu shortcut"; GroupDescription: "Additional icons:"; Flags: checkedonce
 
 [Files]
-; Main executable
 Source: "dist\SupermarketERP.exe"; DestDir: "{app}"; Flags: ignoreversion
-
-; Python modules
-Source: "modules\*.py"; DestDir: "{app}\modules"; Flags: ignoreversion
-Source: "modules\*\*.py"; DestDir: "{app}\modules"; Flags: ignoreversion recursesubdirs
-
-; Database files
 Source: "database\*.py"; DestDir: "{app}\database"; Flags: ignoreversion
 Source: "database\*.sql"; DestDir: "{app}\database"; Flags: ignoreversion
-
-; UI files
+Source: "modules\*.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+Source: "modules\*\*.py"; DestDir: "{app}\modules"; Flags: ignoreversion recursesubdirs
 Source: "ui\styles\*.qss"; DestDir: "{app}\ui\styles"; Flags: ignoreversion
-
-; Utility files
 Source: "utils\*.py"; DestDir: "{app}\utils"; Flags: ignoreversion
-
-; Configuration and main files
 Source: "config.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "main.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Supermarket ERP"; Filename: "{app}\SupermarketERP.exe"; WorkingDir: "{app}"
