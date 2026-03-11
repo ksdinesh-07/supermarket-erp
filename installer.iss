@@ -45,26 +45,3 @@ Filename: "{app}\SupermarketERP.exe"; Description: "Launch Supermarket ERP"; Fla
 
 [UninstallRun]
 Filename: "{cmd}"; Parameters: "/c taskkill /f /im SupermarketERP.exe 2>nul"; Flags: runhidden
-
-[Code]
-function InitializeSetup(): Boolean;
-begin
-  Result := True;
-  MsgBox('This will install Supermarket ERP on your computer.' + #13#13 +
-         'Default login: admin / admin123' + #13#13 +
-         'Click OK to continue.', mbInformation, MB_OK);
-end;
-
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  ResultCode: Integer;
-begin
-  if CurStep = ssPostInstall then
-  begin
-    if MsgBox('Installation complete! Start Supermarket ERP now?', 
-              mbConfirmation, MB_YESNO) = IDYES then
-    begin
-      Exec(ExpandConstant('{app}\SupermarketERP.exe'), '', '', SW_SHOW, ewNoWait, ResultCode);
-    end;
-  end;
-end;
